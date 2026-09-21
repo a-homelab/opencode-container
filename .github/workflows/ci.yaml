@@ -14,19 +14,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  image-tags:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENCODE_VERSION: "2.0.11"
+    outputs:
+      version: ${{ steps.tags.outputs.version }}
+      tag: ${{ steps.tags.outputs.tag }}
+    steps:
+      - name: Compute image tags
+        id: tags
+        run: |
+          printf 'version=%s\ntag=%s-%s\n' \
+            "$OPENCODE_VERSION" "$OPENCODE_VERSION" "${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
   build-push-container:
+    needs: image-tags
     uses: a-homelab/github-actions/.github/workflows/build-push-container.yaml@main
     with:
       service-name: opencode-container
       platforms: '["linux/amd64","linux/arm64"]'
       build-args: |
         UV_VERSION=0.12.17
-        OPENCODE_VERSION=2.0.11
-      tags: "2.0.11"
+        OPENCODE_VERSION=${{ needs.image-tags.outputs.version }}
+      tags: |
+        ${{ needs.image-tags.outputs.version }}
+        ${{ needs.image-tags.outputs.tag }}
       tag-latest: false
 
   smoke:
-    needs: build-push-container
+    needs: [image-tags, build-push-container]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -34,7 +53,7 @@ jobs:
       packages: read
     services:
       opencode:
-        image: ghcr.io/a-homelab/opencode-container:2.0.11
+        image: ghcr.io/a-homelab/opencode-container:${{ needs.image-tags.outputs.tag }}
         credentials:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}

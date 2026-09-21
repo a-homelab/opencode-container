@@ -139,7 +139,7 @@ Override versions with `--build-arg UV_VERSION=<version>` and
 For a local ARM64 build, use `--platform linux/arm64` on an ARM64 machine or a
 builder with ARM64 emulation.
 
-The smoke checks live directly in [the image workflow](.github/workflows/image.yaml).
+The smoke checks live directly in [the image workflow](.github/workflows/ci.yaml).
 After publishing, its smoke job starts the AMD64 image as a service with a
 read-only root filesystem, no capabilities and writable temporary mounts.
 Steps check the non-root identity, installed tools, offline Python toolkit,
@@ -154,22 +154,23 @@ Every push to `main` calls the full reusable workflow
 to build, scan and publish AMD64 and ARM64 images. A dependent smoke job tests
 the published image through GitHub Actions `services`. A failed smoke job marks
 the workflow failed; the image has already been published at that point.
-Runs are serialized so a same-version rebuild cannot replace the tag during
-another run's smoke checks.
+Each build publishes two tags, for example:
 
-Set `UV_VERSION` and `OPENCODE_VERSION` in the workflow's `build-args` input.
-Set `tags` and the smoke service's image tag to the same OpenCode version.
-The published reference is `ghcr.io/a-homelab/opencode-container:2.0.11`, and
-the OCI version label comes from `OPENCODE_VERSION`. Dockerfile defaults also
-support local builds.
+- `2.0.11`: the latest container build for that OpenCode version.
+- `2.0.11-abc1234`: that OpenCode version plus the first seven characters of
+  the opencode-container commit SHA.
 
-Bump these values in Git and push to `main` to publish. Rebuilding the same
-OpenCode version replaces its image tag. Updating a deployment remains a
-separate GitOps operation; a same-tag rebuild needs a rollout that pulls the
-new image rather than using a node's cached copy.
+The smoke job pulls the commit-specific tag. Runs remain serialized so the
+shared version tag is published in sequence.
 
-Set the package's visibility or deployment pull credentials as appropriate.
-Reference the published version tag in GitOps:
+Set `OPENCODE_VERSION` in the workflow's `image-tags` job and `UV_VERSION` in
+the reusable workflow's `build-args` input. The OpenCode build argument and both
+tags derive from the same version. The OCI version label remains the upstream
+OpenCode version. Dockerfile defaults also support local builds.
+
+Bump these values in Git and push to `main` to publish. Updating a deployment
+remains a separate GitOps operation. Use a published commit-specific tag with
+`IfNotPresent` to select the build explicitly:
 
 ```yaml
 components:
@@ -177,8 +178,15 @@ components:
     container:
       image:
         repository: ghcr.io/a-homelab/opencode-container
-        tag: 2.0.11
+        tag: 2.0.11-abc1234
+        pullPolicy: IfNotPresent
 ```
+
+Replace the example SHA with the published build's tag. The plain `2.0.11`
+tag still moves between builds and should use `Always`. Re-running CI for the
+same commit can replace its commit-specific tag too; use a digest if strict
+artifact immutability is required. Set package visibility or deployment pull
+credentials as appropriate.
 
 The Helm chart remains sourced from Git. Its runtime containers reuse this
 image; no startup tools installer or tools volume is required. Publishing the
