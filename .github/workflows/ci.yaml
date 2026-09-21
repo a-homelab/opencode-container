@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: opencode-image
+  cancel-in-progress: false
+
+jobs:
+  build-push-container:
+    uses: a-homelab/github-actions/.github/workflows/build-push-container.yaml@main
+    with:
+      service-name: opencode-container
+      platforms: '["linux/amd64","linux/arm64"]'
+      build-args: |
+        UV_VERSION=0.12.17
+        OPENCODE_VERSION=2.0.11
+      tags: "2.0.11"
+      tag-latest: false
+
+  smoke:
+    needs: build-push-container
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    services:
+      opencode:
+        image: ghcr.io/a-homelab/opencode-container:2.0.11
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          OPENCODE_PASSWORD: ci-smoke-password
+        ports:
+          - 4096:4096
+        options: >-
+          --read-only
+          --cap-drop=ALL
+          --security-opt=no-new-privileges
+          --tmpfs /state:uid=65532,gid=65532,mode=0700
+          --tmpfs /workspace:uid=65532,gid=65532,mode=0700
+          --tmpfs /tmp:uid=65532,gid=65532,mode=0700
+          --health-cmd "curl --fail --silent --user opencode:ci-smoke-password http://localhost:4096/api/info"
+          --health-interval=2s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - name: Check runtime and tools
+        run: |
+          docker exec -i '${{ job.services.opencode.id }}' sh -eu <<'SH'
+          test "$(id -u)" = 65532
+          test "$(id -g)" = 65532
+          test -s /etc/ssl/certs/ca-certificates.crt
+          test "$OPENCODE_CONFIG_DIR" = /opt/opencode-defaults
+          test -s "$OPENCODE_CONFIG_DIR/AGENTS.md"
+          test ! -w "$OPENCODE_CONFIG_DIR/AGENTS.md"
+          for path in /usr/local/bin /var/lib/dpkg /opt/agent-toolkit /opt/agent-toolkit/.venv; do
+            test ! -w "$path"
+          done
+          for tool in git gh python3 bash jq curl rg sed grep find diff patch tar gzip uv uvx; do
+            "$tool" --version
+          done
+          openssl version
+          bash -ec 'test "$(printf shell-ready)" = shell-ready'
+          SH
+      - name: Check offline Python toolkit
+        run: |
+          docker exec -i '${{ job.services.opencode.id }}' sh -eu <<'SH'
+          uv run --project /opt/agent-toolkit --no-sync --offline python -c '
+          import requests, httpx, tenacity, pydantic, yaml, pandas, bs4, lxml.etree
+          import dateutil, rich, jinja2, dotenv
+          assert pandas.DataFrame({"value": [1, 2]}).value.sum() == 3
+          assert lxml.etree.fromstring(b"<root/>").tag == "root"
+          assert pydantic.TypeAdapter(list[int]).validate_python(["1"]) == [1]
+          '
+          uv run --project /opt/agent-toolkit --no-sync --offline ruff --version
+          uv run --project /opt/agent-toolkit --no-sync --offline pytest --version
+          SH
+      - name: Check Git commits and worktrees
+        run: |
+          docker exec -i '${{ job.services.opencode.id }}' sh -eu <<'SH'
+          git init --initial-branch=main /workspace/test-repo
+          cd /workspace/test-repo
+          git config user.name Fixture
+          git config user.email fixture@example.test
+          printf 'fixture\n' > example.txt
+          git add example.txt
+          git -c commit.gpgsign=false commit -m Fixture
+          git worktree add -b task /workspace/task
+          test "$(cat /workspace/task/example.txt)" = fixture
+          SH
+      - name: Check API version and authentication
+        env:
+          CONTAINER_ID: ${{ job.services.opencode.id }}
+        run: |
+          version=$(docker inspect "$CONTAINER_ID" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')
+          test "$(docker exec "$CONTAINER_ID" opencode --version)" = "opencode v$version"
+          curl --fail --silent --show-error --user opencode:ci-smoke-password \
+            http://localhost:4096/api/info | jq --exit-status --arg version "$version" '.version == $version'
+          test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            http://localhost:4096/api/session)" = 401

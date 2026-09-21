@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!toolkit/
+!toolkit/pyproject.toml
+!toolkit/uv.lock
+!config/
+!config/AGENTS.md
