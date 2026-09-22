@@ -2,6 +2,8 @@
 
 ARG UV_VERSION=0.12.17
 ARG OPENCODE_VERSION=2.0.11
+ARG BUN_VERSION=1.3.14
+ARG IMAGEGEN_REVISION=57b3a14c2ec47a71fb67e4d696aeae9c355f7e4a
 
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
@@ -14,6 +16,19 @@ ARG OPENCODE_VERSION
 ADD https://registry.npmjs.org/@opencode/cli-linux-arm64/-/cli-linux-arm64-${OPENCODE_VERSION}.tgz /opencode.tgz
 
 FROM opencode-${TARGETARCH} AS opencode
+
+FROM scratch AS imagegen-source
+ARG IMAGEGEN_REVISION
+ADD https://github.com/a-homelab/opencode-gpt-imagegen/archive/${IMAGEGEN_REVISION}.tar.gz /imagegen.tar.gz
+
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION} AS imagegen
+WORKDIR /build
+COPY --from=imagegen-source /imagegen.tar.gz /tmp/imagegen.tar.gz
+RUN tar -xzf /tmp/imagegen.tar.gz --strip-components=1 \
+    && bun install --frozen-lockfile \
+    && bun build ./src/index.ts --outfile /out/index.js \
+      --target bun --format esm --packages bundle \
+    && cp LICENSE /out/LICENSE
 
 FROM debian:stable-slim AS build
 
@@ -61,6 +76,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ARG OPENCODE_VERSION
+ARG IMAGEGEN_REVISION
 
 RUN groupadd --gid 65532 opencode \
     && useradd --uid 65532 --gid 65532 --no-log-init --no-create-home \
@@ -70,12 +86,15 @@ RUN groupadd --gid 65532 opencode \
 LABEL org.opencontainers.image.title="opencode-container" \
       org.opencontainers.image.description="OpenCode v2 with Git, GitHub CLI and authoring tools" \
       org.opencontainers.image.source="https://github.com/a-homelab/opencode-container" \
-      org.opencontainers.image.version="${OPENCODE_VERSION}"
+      org.opencontainers.image.version="${OPENCODE_VERSION}" \
+      io.a-homelab.imagegen.revision="${IMAGEGEN_REVISION}"
 
 COPY --from=build /usr/local/bin/opencode /usr/local/bin/opencode
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=build /opt/agent-toolkit/ /opt/agent-toolkit/
 COPY config/AGENTS.md /opt/opencode-defaults/AGENTS.md
+COPY config/opencode.json /opt/opencode-defaults/opencode.json
+COPY --from=imagegen /out/ /opt/opencode-plugins/imagegen/
 
 ENV OPENCODE_CONFIG_DIR=/opt/opencode-defaults \
     HOME=/state \

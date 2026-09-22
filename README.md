@@ -18,7 +18,8 @@ OpenCode 2.0.11 is downloaded as a standalone glibc binary from the official
 selects the matching download stage using `TARGETARCH`. Dockerfile
 `ADD` downloads the versioned archive over HTTPS.
 The AMD64 build uses the baseline binary for broader CPU compatibility. No
-upstream OpenCode image, Node.js runtime or npm installation is involved.
+upstream OpenCode image, Node.js runtime or npm installation is involved in
+preparing the OpenCode binary.
 
 The [Dockerfile](Dockerfile) lists the Debian runtime tools inline. The fresh
 runtime stage installs them and their dependencies with APT using
@@ -34,6 +35,41 @@ and optional one-off dependencies in writable state storage.
 Base tags and Debian packages can change between builds. Use `--pull --no-cache`
 to refresh them, test the result and publish the image. Deployment
 references use readable version tags as well.
+
+## Image generation plugin
+
+The image includes our [opencode-gpt-imagegen fork](https://github.com/a-homelab/opencode-gpt-imagegen).
+`IMAGEGEN_REVISION` in the Dockerfile pins its full Git commit. A separate build
+stage downloads that revision and uses Bun 1.3.14 with the fork's frozen lockfile
+to bundle the plugin and its runtime dependencies. Only the JavaScript bundle
+and plugin license enter `/opt/opencode-plugins/imagegen`; Bun, source files,
+and package caches stay in the build stage. `BUN_VERSION` controls the builder.
+
+[`config/opencode.json`](config/opencode.json) enables that local plugin directory
+through OpenCode v2's `plugins` setting. Directory configuration works on the
+pinned 2.0.11 release. The plugin requires no package downloads or writes under
+`/opt` at startup. CI verifies that it is active under the read-only runtime
+contract without supplying provider credentials.
+
+The `gpt_imagegen` tool uses the active OpenAI ChatGPT OAuth connection in
+OpenCode. OpenCode owns database storage and refresh; the plugin resolves the
+connection for every invocation and never copies credentials into its own
+storage. Authenticate and select a ChatGPT connection through OpenCode, retaining
+the writable `/state` volume. No credentials are included in the image.
+API-key connections are not supported by this plugin. Image paths resolve from
+the calling session's directory, and existing output files receive a version
+suffix. Cancellation requires a host that supplies tool signals, such as 2.0.14.
+
+After rebasing and testing the fork, push its new commit, update
+`IMAGEGEN_REVISION`, and rebuild this image. The OCI label
+`io.a-homelab.imagegen.revision` records the selected revision. See the fork's
+[maintenance notes](https://github.com/a-homelab/opencode-gpt-imagegen/blob/main/FORK.md)
+for the upstream PR and compatibility checks.
+
+To test unpushed plugin changes, create a tar archive with one top-level
+directory in a temporary build context. Supply that context with
+`--build-context imagegen-source=/path/to/context`; it must contain
+`imagegen.tar.gz`. This overrides the source download stage for local testing.
 
 ## Shared Python toolkit
 
@@ -93,8 +129,8 @@ also disables OpenCode self-updates and project configuration overrides.
 
 Provider integrations may need additional language runtimes or libraries. Add
 reviewed dependencies here, rebuild, and update the deployment's image reference.
-Small skill scripts can stay in read-only ConfigMaps. This image does not bundle
-an image-generation integration or assume access to any model provider.
+Small skill scripts can stay in read-only ConfigMaps. The bundled image-generation
+plugin needs a ChatGPT connection supplied by the deployment.
 
 ## Tools guide and custom purpose
 
@@ -119,8 +155,10 @@ Use native v2 agent settings to supply the agent's purpose, for example:
 Mount `purpose.md` read-only alongside that configuration. Custom named agents
 can also set `agents.<name>.system` and `default_agent`. OpenCode combines the
 selected agent's system prompt with the global tools guide. Keep
-`OPENCODE_CONFIG_DIR` at its image default to retain that guide; replacing the
-global directory replaces its instruction source. The v2 `instructions` array
+`OPENCODE_CONFIG_DIR` at its image default to retain that guide and the bundled
+plugin configuration. If replacing the global directory, include
+`"plugins": ["/opt/opencode-plugins/imagegen"]` in the replacement configuration.
+The v2 `instructions` array
 does not currently load files, so it is not used for this integration.
 
 The Helm chart maps `opencode.instructions` to the default build agent's system

@@ -82,6 +82,10 @@ jobs:
           test "$OPENCODE_CONFIG_DIR" = /opt/opencode-defaults
           test -s "$OPENCODE_CONFIG_DIR/AGENTS.md"
           test ! -w "$OPENCODE_CONFIG_DIR/AGENTS.md"
+          test -s "$OPENCODE_CONFIG_DIR/opencode.json"
+          test ! -w "$OPENCODE_CONFIG_DIR/opencode.json"
+          test -s /opt/opencode-plugins/imagegen/index.js
+          test ! -w /opt/opencode-plugins/imagegen/index.js
           for path in /usr/local/bin /var/lib/dpkg /opt/agent-toolkit /opt/agent-toolkit/.venv; do
             test ! -w "$path"
           done
@@ -127,3 +131,15 @@ jobs:
             http://localhost:4096/api/info | jq --exit-status --arg version "$version" '.version == $version'
           test "$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             http://localhost:4096/api/session)" = 401
+      - name: Check bundled imagegen plugin
+        run: |
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error --user opencode:ci-smoke-password \
+              --get --data-urlencode 'location[directory]=/workspace' http://localhost:4096/api/plugin \
+              | jq --exit-status '[.data[] | select(.id == "opencode-gpt-imagegen" and .state.status == "active")] | length == 1'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Bundled imagegen plugin did not become active' >&2
+          exit 1
