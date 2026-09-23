@@ -1,7 +1,7 @@
 # opencode-container
 
 Reusable OpenCode v2 authoring image with Git, GitHub CLI, Python, uv, Bash, curl,
-jq, ripgrep, OpenSSL and common file/text utilities installed at build time.
+jq, rclone, ripgrep, OpenSSL and common file/text utilities installed at build time.
 Deployment-specific configuration, skills, instructions and credentials belong
 in mounted configuration and Secrets.
 

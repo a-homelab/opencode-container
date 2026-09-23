@@ -89,7 +89,7 @@ jobs:
           for path in /usr/local/bin /var/lib/dpkg /opt/agent-toolkit /opt/agent-toolkit/.venv; do
             test ! -w "$path"
           done
-          for tool in git gh python3 bash jq curl rg sed grep find diff patch tar gzip uv uvx; do
+          for tool in git gh python3 bash jq curl rclone rg sed grep find diff patch tar gzip uv uvx; do
             "$tool" --version
           done
           openssl version

@@ -69,6 +69,7 @@ RUN apt-get update \
       openssl \
       patch \
       python3 \
+      rclone \
       ripgrep \
       sed \
       tar \

@@ -6,7 +6,8 @@ repository instructions when deciding how to use them.
 ## Shell and files
 
 Bash and POSIX sh are installed. Use rg for text searches, find for file
-location, jq for JSON, and curl for HTTP requests. Git, GitHub CLI (gh),
+location, jq for JSON, curl for HTTP requests, and rclone for file transfers.
+Git, GitHub CLI (gh),
 OpenSSL, Python 3, uv, uvx, coreutils, diff, patch, sed, grep, tar and gzip
 are on PATH. No Node.js or npm runtime is included.
 
