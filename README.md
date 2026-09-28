@@ -13,7 +13,7 @@ and the Python toolkit. uv comes from `ghcr.io/astral-sh/uv:0.12.17`. Image
 references use readable tags. Builds support `linux/amd64` and `linux/arm64`.
 `UV_VERSION` is a build argument, defaulting to `0.12.17`.
 
-OpenCode 2.0.11 is downloaded as a standalone glibc binary from the official
+OpenCode 2.0.18 is downloaded as a standalone glibc binary from the official
 `@opencode/cli-linux-x64-baseline` or `@opencode/cli-linux-arm64` package. Docker
 selects the matching download stage using `TARGETARCH`. Dockerfile
 `ADD` downloads the versioned archive over HTTPS.
@@ -47,7 +47,7 @@ and package caches stay in the build stage. `BUN_VERSION` controls the builder.
 
 [`config/opencode.json`](config/opencode.json) enables that local plugin directory
 through OpenCode v2's `plugins` setting. Directory configuration works on the
-pinned 2.0.11 release. The plugin requires no package downloads or writes under
+pinned 2.0.18 release. The plugin requires no package downloads or writes under
 `/opt` at startup. CI verifies that it is active under the read-only runtime
 contract without supplying provider credentials.
 
@@ -194,8 +194,8 @@ the published image through GitHub Actions `services`. A failed smoke job marks
 the workflow failed; the image has already been published at that point.
 Each build publishes two tags, for example:
 
-- `2.0.11`: the latest container build for that OpenCode version.
-- `2.0.11-abc1234`: that OpenCode version plus the first seven characters of
+- `2.0.18`: the latest container build for that OpenCode version.
+- `2.0.18-abc1234`: that OpenCode version plus the first seven characters of
   the opencode-container commit SHA.
 
 The smoke job pulls the commit-specific tag. Runs remain serialized so the
@@ -216,11 +216,11 @@ components:
     container:
       image:
         repository: ghcr.io/a-homelab/opencode-container
-        tag: 2.0.11-abc1234
+        tag: 2.0.18-abc1234
         pullPolicy: IfNotPresent
 ```
 
-Replace the example SHA with the published build's tag. The plain `2.0.11`
+Replace the example SHA with the published build's tag. The plain `2.0.18`
 tag still moves between builds and should use `Always`. Re-running CI for the
 same commit can replace its commit-specific tag too; use a digest if strict
 artifact immutability is required. Set package visibility or deployment pull

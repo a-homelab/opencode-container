@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
     env:
-      OPENCODE_VERSION: "2.0.11"
+      OPENCODE_VERSION: "2.0.18"
     outputs:
       version: ${{ steps.tags.outputs.version }}
       tag: ${{ steps.tags.outputs.tag }}
